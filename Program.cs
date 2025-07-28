@@ -5,12 +5,12 @@ namespace RollCount
 
     public class Program
     {
-
-        public static readonly int _indicePuloTexto = 7;
+        public static readonly int _indicePuloTexto = 8;
+        private static int _tentativasTotal;
+        private static List<CountModel> _listaContagemTotal = [];
 
         static void Main()
         {
-            Console.CursorVisible = false;
             Executar();
         }
 
@@ -29,20 +29,29 @@ namespace RollCount
             var timer = new Stopwatch();
             var resposta = PerguntaTipoRolagem();
 
-            Console.Clear();
-            Console.WriteLine($"Iniciando as rolagens {(resposta ? "Sequencia Completa" : "Sequencia de Grupo")}");
-            Console.WriteLine();
+            TextoInicial(resposta);
 
             for (int i = 0; i < rolls.Count; i++)
             {
                 var resultado = Rolagems(rolls[i], i, resposta);
 
                 if (!resultado)
-                    i = 0;
+                {
+                    i = -1;
+                    TextoInicial(resposta);
+                }
             }
             timer.Stop();
             Console.WriteLine();
             Console.WriteLine($"Tempo Total: {timer.Elapsed}");
+        }
+
+        public static void TextoInicial(bool resposta)
+        {
+            Console.Clear();
+            Console.CursorVisible = false;
+            Console.WriteLine($"Iniciando as rolagens {(resposta ? "Sequencia Completa" : "Sequencia de Grupo")}");
+            Console.WriteLine();
         }
 
         public static bool PerguntaTipoRolagem()
@@ -58,7 +67,9 @@ namespace RollCount
 
         public static bool Rolagems(RollModel rollModel, int indice, bool sequenciaCompleta = false)
         {
-            Int128 tentativas = 0;
+            var contagemTotal = _listaContagemTotal.FirstOrDefault(x => x.IndiceGrupo == indice);
+
+            Int128 tentativas = sequenciaCompleta ? contagemTotal?.Tentativas ?? 0 : 0;
             long timer = Stopwatch.GetTimestamp();
 
             Console.SetCursorPosition(0, (indice * _indicePuloTexto) + 2);
@@ -71,12 +82,15 @@ namespace RollCount
 
             int? maior = null;
             TimeSpan? tempoDoMaior = null;
+            TimeSpan? tempoDoMaiorPrimeiraVez = null;
 
             var listaRolagem = new List<int>();
+
+            var sairComErroQuandoSequenciaCompleta = false;
             for (int i = 0; i < rollModel.RollMaxNumber; i++)
             {
-                var retorna = false;
                 tentativas++;
+                _tentativasTotal++;
 
                 int rolagem = new Random().Next(1, rollModel.RollMaxNumber + 1);
 
@@ -85,7 +99,7 @@ namespace RollCount
                 {
                     listaRolagem = [];
                     if (sequenciaCompleta)
-                        retorna = true;
+                        sairComErroQuandoSequenciaCompleta = true;
 
                     i = -1;
                 }
@@ -95,24 +109,43 @@ namespace RollCount
 
                     if (rolagem >= (maior ?? 0))
                     {
+                        if (rolagem > (maior ?? 0))
+                            tempoDoMaiorPrimeiraVez = Stopwatch.GetElapsedTime(timer);
+
                         maior = rolagem;
                         tempoDoMaior = Stopwatch.GetElapsedTime(timer);
                     }
                 }
 
-                Console.WriteLine($"Tentativas: {tentativas}".PadRight(Console.BufferWidth));
+                Console.WriteLine($"Tentativas Total: {_tentativasTotal}".PadRight(Console.BufferWidth));
+                Console.WriteLine($"Tentativas Grupo: {tentativas}".PadRight(Console.BufferWidth));
                 Console.WriteLine($"Tempo: {Stopwatch.GetElapsedTime(timer):dd\\ hh\\:mm\\:ss\\.fffffff}".PadRight(Console.BufferWidth));
-                Console.WriteLine($"Maior rolagem: {maior?.ToString() ?? ""} em {tempoDoMaior:dd\\ hh\\:mm\\:ss\\.fffffff}".PadRight(Console.BufferWidth));
+                Console.WriteLine($"Maior rolagem: {maior?.ToString() ?? ""} primeira vez em {tempoDoMaiorPrimeiraVez:dd\\ hh\\:mm\\:ss\\.fffffff} ultima vez em {tempoDoMaior:dd\\ hh\\:mm\\:ss\\.fffffff}".PadRight(Console.BufferWidth));
                 Console.WriteLine($"Rolagem Atual: {string.Join(",", rolagem)}".PadRight(Console.BufferWidth));
                 Console.WriteLine($"Rolagens em Sêquencia: {string.Join(",", listaRolagem)}".PadRight(Console.BufferWidth));
 
                 Console.SetCursorPosition(0, (indice * _indicePuloTexto) + 3);
 
-                if (retorna)
-                    return false;
+                if (sairComErroQuandoSequenciaCompleta)
+                    break;
             }
 
-            return true;
+            if (sequenciaCompleta)
+                ConfiguraContagemTotal(indice, contagemTotal, tentativas);
+
+            return !sequenciaCompleta || !sairComErroQuandoSequenciaCompleta;
+        }
+
+        private static void ConfiguraContagemTotal(int indice, CountModel? contagemTotal, Int128 tentativas)
+        {
+            if (contagemTotal == null)
+            {
+                var listaContagemTotal = _listaContagemTotal;
+                listaContagemTotal.Add(new() { IndiceGrupo = indice, Tentativas = tentativas });
+                _listaContagemTotal = listaContagemTotal;
+            }
+            else
+                contagemTotal.Tentativas = tentativas;
         }
     }
 }
